@@ -1,0 +1,9 @@
+#!/bin/sh
+# Reject commit messages that mention Claude or carry a co-author trailer.
+# "CLAUDE.md" (the file name) is allowed.
+if grep -v '^#' "$1" \
+  | sed 's/[Cc][Ll][Aa][Uu][Dd][Ee]\.[Mm][Dd]//g' \
+  | grep -qiE 'claude|anthropic|co-authored-by'; then
+  echo "commit-msg: remove Claude/co-author mentions from the message." >&2
+  exit 1
+fi

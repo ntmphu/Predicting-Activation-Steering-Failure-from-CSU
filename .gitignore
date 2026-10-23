@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# Cached results (large); figures are kept
+results/*
+!results/.gitkeep
+!results/figures/
+
+# Model weights / caches
+*.safetensors
+*.bin
+.cache/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
