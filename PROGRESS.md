@@ -30,9 +30,9 @@ Status: ⬜ todo · 🟡 in progress · ✅ done · ⚠️ blocked
 
 - [x] Git repo, CLAUDE.md, PROGRESS.md
 - [ ] Python env + `pip install -r requirements.txt`
-- [ ] Download `generate_dataset.json` into `data/`
+- [x] Download `generate_dataset.json` into `data/` (1,000 items, syc = A in 48.9%)
 - [ ] Colab runtime working (VS Code extension or git clone)
-- [ ] Push to GitHub (needed for Colab clone)
+- [x] Push to GitHub: https://github.com/ntmphu/Predicting-Activation-Steering-Failure-from-CSU
 
 ## Log
 
