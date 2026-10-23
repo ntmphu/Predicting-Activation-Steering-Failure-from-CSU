@@ -11,6 +11,10 @@ RESULTS = ROOT / "results"
 MODEL = "Qwen/Qwen2.5-1.5B-Instruct"
 DEBUG_MODEL = "Qwen/Qwen2.5-0.5B-Instruct"
 
+# Prompt: optional text appended to every question (decided with src/format_check.py)
+ANSWER_INSTRUCTION = "\n\nAnswer with (A) or (B)."
+INSTRUCTION = ""   # "" = plain CAA question; set to ANSWER_INSTRUCTION if format_check says so
+
 # Experiment settings
 SEED = 0
 N_CONSTRUCT = 400  # construction pairs; the remaining 600 are evaluation

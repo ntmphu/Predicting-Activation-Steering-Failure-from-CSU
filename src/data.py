@@ -6,7 +6,7 @@ import argparse
 import json
 import random
 
-from src.config import DATA_PATH, DEBUG_MODEL, N_CONSTRUCT, SEED, SPLIT_PATH
+from src.config import DATA_PATH, DEBUG_MODEL, INSTRUCTION, N_CONSTRUCT, SEED, SPLIT_PATH
 
 
 def load_items(path=DATA_PATH):
@@ -45,13 +45,14 @@ def _apply_split(items, split):
     return [by_id[i] for i in split["construct"]], [by_id[i] for i in split["evaluate"]]
 
 
-def build_prompt(tokenizer, question):
+def build_prompt(tokenizer, question, instruction=INSTRUCTION):
     """Chat-formatted prompt ending right where the assistant's answer starts.
 
     Qwen's tokenizer merges "(A" into ONE token, so we don't end the prompt with "(".
-    Instead the model's next token is the answer token "(A" or "(B" (see answer_token)."""
+    Instead the model's next token is the answer token "(A" or "(B" (see answer_token).
+    `instruction` is optional text added after the question (see config.INSTRUCTION)."""
     return tokenizer.apply_chat_template(
-        [{"role": "user", "content": question}], tokenize=False, add_generation_prompt=True
+        [{"role": "user", "content": question + instruction}], tokenize=False, add_generation_prompt=True
     )
 
 
@@ -71,7 +72,7 @@ def main():
     parser.add_argument("--limit", type=int, default=None, help="only check the first N eval prompts")
     args = parser.parse_args()
 
-    from transformers import AutoTokenizer  # only the tokenizer is needed here, not the weights
+    from src.model import load_tokenizer  # only the tokenizer is needed here, not the weights
 
     items = load_items()
     construct, evaluate = split_items(items)
@@ -89,7 +90,7 @@ def main():
         print(f"syc=A share ({name}): {share:.3f}{flag}")
 
     # Check 3: one prompt looks right
-    tok = AutoTokenizer.from_pretrained(args.model)
+    tok = load_tokenizer(args.model)
     sample = evaluate[: args.limit] if args.limit else evaluate
     prompt = build_prompt(tok, sample[0]["question"])
     print("\n--- example prompt ---")
