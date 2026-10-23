@@ -8,7 +8,7 @@ Deadline: **Tue Oct 27, 11:59 PM PT** (one upload on E-learning).
 |---|-----------|------|--------|------------------|
 | 0 | Setup: repo, env, data, Colab | — | ✅ | venv (CPU), `run_colab.ipynb` |
 | 1 | Data split + prompts | `src/data.py` | ✅ | 400/600, syc=A 0.492/0.487, answer tokens clean 0/1200 bad |
-| 2 | Record hidden states | `src/model.py` | ⬜ | |
+| 2 | Record hidden states | `src/model.py`, `src/format_check.py` | 🟡 code works on 0.5B; run on Colab 1.5B | prefix check 8e-7 |
 | 3 | Steering hook | `src/model.py` | ⬜ | |
 | 4 | Choose layer + α | `src/sweep.py` | ⬜ | LAYER = ?, ALPHA = ? |
 | 5 | Failure labels (GPU) | `src/labels.py` | ⬜ | failure rate per n: |
