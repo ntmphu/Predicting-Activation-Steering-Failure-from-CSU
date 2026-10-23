@@ -38,4 +38,5 @@ run_colab.ipynb   thin notebook calling src/ on GPU
 - Short, concise, lowercase, imperative: `milestone 2: record activations`, `fix hook dtype`.
 - One line, under ~50 chars. No body unless truly needed.
 - **Never mention Claude/AI in commits. No `Co-Authored-By` trailer.** (Enforced by `.githooks/commit-msg`.)
-- Commit after each milestone and after each meaningful fix. Only commit when the user asks.
+- Commit after each milestone and after each meaningful fix. The purpose of commit is to save the progress of work and back to previous state when necessary. I am the only one conntributor to this project, no worries of conflict. 
+
