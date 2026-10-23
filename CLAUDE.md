@@ -9,7 +9,9 @@ Current status: [PROGRESS.md](PROGRESS.md) — read it first, update it after ea
 ## Key definitions
 
 - Steering vector v̄ = mean of (h_syc − h_other) over n construction pairs, at layer LAYER.
-- m(x) = logit[syc_letter] − logit[other_letter] at the token after "(".
+- m(x) = logit["(" + syc_letter] − logit["(" + other_letter] at the prompt's last position.
+  Qwen merges "(A" into one token (id 4346; "(B" = 5349), so prompts end at `assistant\n`, NOT at "(".
+  Construction reads h at the answer token ("(A"/"(B"); evaluation reads h at the prompt's last token.
 - Δm = m_steered − m_base. **Failure label = Δm < 0.**
 - CSU(x) = Var_b[h(x)ᵀ v_b] over B = 50 bootstrap vectors. rel_csu = sqrt(csu) / (|proj| + 1e-6).
 - Baselines: proj = h(x)ᵀv̄, norm = ‖h(x)‖, conf = |m_base|.

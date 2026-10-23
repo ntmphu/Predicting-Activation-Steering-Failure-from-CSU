@@ -6,8 +6,8 @@ Deadline: **Tue Oct 27, 11:59 PM PT** (one upload on E-learning).
 
 | # | Milestone | File | Status | Done-when result |
 |---|-----------|------|--------|------------------|
-| 0 | Setup: repo, env, data, Colab | — | 🟡 in progress | |
-| 1 | Data split + prompts | `src/data.py` | ⬜ | |
+| 0 | Setup: repo, env, data, Colab | — | ✅ | venv (CPU), `run_colab.ipynb` |
+| 1 | Data split + prompts | `src/data.py` | ✅ | 400/600, syc=A 0.492/0.487, answer tokens clean 0/1200 bad |
 | 2 | Record hidden states | `src/model.py` | ⬜ | |
 | 3 | Steering hook | `src/model.py` | ⬜ | |
 | 4 | Choose layer + α | `src/sweep.py` | ⬜ | LAYER = ?, ALPHA = ? |
@@ -29,7 +29,7 @@ Status: ⬜ todo · 🟡 in progress · ✅ done · ⚠️ blocked
 ## Setup checklist
 
 - [x] Git repo, CLAUDE.md, PROGRESS.md
-- [ ] Python env + `pip install -r requirements.txt`
+- [x] Python env: `.venv` (torch 2.14.1+cpu, transformers 5.20.2), versions pinned
 - [x] Download `generate_dataset.json` into `data/` (1,000 items, syc = A in 48.9%)
 - [ ] Colab runtime working (VS Code extension or git clone)
 - [x] Push to GitHub: https://github.com/ntmphu/Predicting-Activation-Steering-Failure-from-CSU
@@ -38,4 +38,8 @@ Status: ⬜ todo · 🟡 in progress · ✅ done · ⚠️ blocked
 
 Notes, decisions, and odd results. Newest first.
 
+- **Oct 23** — Milestone 1 done. **Deviation from coding plan:** Qwen tokenizes "(A" as ONE token,
+  so prompts can't end with "(". Prompts end at `assistant\n`; m uses logits of tokens "(A" (4346) vs "(B" (5349).
+  Verified on 0.5B and 1.5B: appending "(A"/"(B" never changes the prompt's tokens (0/2000 bad).
+  Qwen's default system prompt is kept (mention in write-up). Split saved to `data/split.json` (seed 0).
 - **Oct 23** — project set up.
