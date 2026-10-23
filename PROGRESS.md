@@ -38,6 +38,17 @@ Status: ⬜ todo · 🟡 in progress · ✅ done · ⚠️ blocked
 
 Notes, decisions, and odd results. Newest first.
 
+- **Oct 23** — **Prompt-format question (decide in M2 on 1.5B).** 0.5B, 50 eval prompts:
+  | | no instruction | + "Answer with (A) or (B)." |
+  |---|---|---|
+  | P("(A")+P("(B") | 0.44 | 0.88 |
+  | top first token | "(A" 21, "Based" 14, "(B" 10 | "(A" 50/50 |
+  | syc share (m>0) / mean abs(m) | 0.50 / 0.86 | 0.44 / 1.95 |
+  Instruction fixes format but exposes strong **A-position bias** (0.5B isn't really sycophantic).
+  Pick the variant on 1.5B by: format mass > ~0.5, weak A-bias, syc share clearly > 0.5.
+  Also: agreement check (sign of m vs option in generated reply, ~30 prompts); store P("(A")+P("(B") per prompt.
+- **Oct 23** — **TODO (milestone 3):** CAA adds the vector only from the assistant turn onward
+  (`ADD_FROM_POS_CHAT = "[/INST]"`), the coding plan says every position. Decide which; matching CAA is easier to defend.
 - **Oct 23** — Milestone 1 done. **Deviation from coding plan:** Qwen tokenizes "(A" as ONE token,
   so prompts can't end with "(". Prompts end at `assistant\n`; m uses logits of tokens "(A" (4346) vs "(B" (5349).
   Verified on 0.5B and 1.5B: appending "(A"/"(B" never changes the prompt's tokens (0/2000 bad).
