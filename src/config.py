@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DATA_PATH = ROOT / "data" / "generate_dataset.json"
 SPLIT_PATH = ROOT / "data" / "split.json"
 RESULTS = ROOT / "results"
+HF_REPO_NAME = "csu-results"  # private HF dataset repo for backups; owner = whoever's token is used
 
 # Models: debug on the small one (laptop CPU), run the real one on Colab
 MODEL = "Qwen/Qwen2.5-1.5B-Instruct"
