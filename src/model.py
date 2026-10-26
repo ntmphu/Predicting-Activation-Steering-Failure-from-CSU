@@ -106,6 +106,26 @@ def summarize(items, m, mass):
           f"{chose_a[~syc_is_a].float().mean():.2f} when syc=B   (both near 1 = A-bias)")
 
 
+def acts_path(model_name, limit=None):
+    """Where milestone 2 saves its results, e.g. results/acts_Qwen2.5-1.5B-Instruct.pt."""
+    return RESULTS / f"acts_{model_name.split('/')[-1]}{f'_limit{limit}' if limit else ''}.pt"
+
+
+def load_acts(model_name):
+    """Load milestone 2 results: the full run if it exists, else the biggest --limit debug run."""
+    full = acts_path(model_name)
+    if full.exists():
+        path = full
+    else:
+        debug = sorted(RESULTS.glob(f"{full.stem}_limit*.pt"), key=lambda p: int(p.stem.split("limit")[-1]))
+        assert debug, f"no {full.name}; run `python -m src.model --model {model_name}` first"
+        path = debug[-1]
+    acts = torch.load(path)
+    assert acts["instruction"] == INSTRUCTION, f"{path.name} was made with a different INSTRUCTION; re-run src.model"
+    print(f"loaded {path.name}")
+    return acts
+
+
 def check_prefix(model, tok, item):
     """The evaluation state (last prompt token) must equal position -2 of the construction run
     (prompt + "(A"), because the model only looks backwards. Confirms prompt tokens are unchanged."""
@@ -144,8 +164,7 @@ def main():
     summarize(evaluate, m_base, mass)
 
     RESULTS.mkdir(exist_ok=True)
-    tag = args.model.split("/")[-1] + (f"_limit{args.limit}" if args.limit else "")
-    path = RESULTS / f"acts_{tag}.pt"
+    path = acts_path(args.model, args.limit)
     torch.save({
         "model": args.model, "instruction": INSTRUCTION,
         "construct_ids": [it["id"] for it in construct], "diffs": diffs,

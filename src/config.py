@@ -19,5 +19,7 @@ INSTRUCTION = ANSWER_INSTRUCTION  # chosen Oct 26 from format_check on 1.5B (see
 # Experiment settings
 SEED = 0
 N_CONSTRUCT = 400  # construction pairs; the remaining 600 are evaluation
+STEER_FROM = "reply"  # "reply": add the vector from the assistant turn on (CAA-style, proposal Eq. 2)
+                      # "all": every position (optional robustness check)
 LAYER = None       # chosen in milestone 4
 ALPHA = None       # chosen in milestone 4
