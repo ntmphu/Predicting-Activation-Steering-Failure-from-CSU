@@ -42,19 +42,19 @@ def answer_ids(tok):
 # ---------- one forward pass ----------
 
 @torch.no_grad()  # no gradients: we only read the model, never train it
-def run(model, tok, text):
+def run(model, tok, text, last=1):
     """Run the model once on `text`.
 
     Returns
-      hidden: (n_layers, seq_len, d)  hidden[l] = output of layer l at every position
-      logits: (vocab,)                scores for the NEXT token after the last position
+      hidden: (n_layers, last, d)  hidden[l] = output of layer l at the last `last` positions
+      logits: (vocab,)             scores for the NEXT token after the last position
     """
     enc = tok(text, return_tensors="pt", add_special_tokens=False).to(model.device)
     out = model(**enc, output_hidden_states=True)
     # out.hidden_states has n_layers + 1 entries: [0] = embeddings, [l + 1] = output of layer l.
     # (HF applies the final norm to the last entry, so the very last layer is slightly different.)
-    hidden = torch.stack(out.hidden_states[1:])[:, 0]  # drop embeddings and the batch dim
-    return hidden.float().cpu(), out.logits[0, -1].float().cpu()
+    hidden = torch.stack(out.hidden_states[1:])[:, 0, -last:]  # drop embeddings + batch dim, keep last positions
+    return hidden.float().cpu(), out.logits[0, -1].float().cpu()  # only copy what we need off the GPU
 
 
 def margin(logits, item, ids):
@@ -111,7 +111,7 @@ def check_prefix(model, tok, item):
     (prompt + "(A"), because the model only looks backwards. Confirms prompt tokens are unchanged."""
     prompt = build_prompt(tok, item["question"])
     h_prompt, _ = run(model, tok, prompt)
-    h_full, _ = run(model, tok, prompt + answer_token("A"))
+    h_full, _ = run(model, tok, prompt + answer_token("A"), last=2)
     diff = (h_prompt[:, -1] - h_full[:, -2]).norm() / h_prompt[:, -1].norm()
     print(f"prefix check: relative difference = {diff:.2e}   (want < 1e-2)")
 
