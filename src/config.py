@@ -19,7 +19,9 @@ INSTRUCTION = ANSWER_INSTRUCTION  # chosen Oct 26 from format_check on 1.5B (see
 # Experiment settings
 SEED = 0
 N_CONSTRUCT = 400  # construction pairs; the remaining 600 are evaluation
-STEER_FROM = "reply"  # "reply": add the vector from the assistant turn on (CAA-style, proposal Eq. 2)
-                      # "all": every position (optional robustness check)
-LAYER = None       # chosen in milestone 4
-ALPHA = None       # chosen in milestone 4
+# Steering (chosen Oct 26 from src/sweep.py + src/diagnose.py on 1.5B, see PROGRESS.md log)
+STEER_FROM = "all"  # every position; "reply" (CAA-style) was too weak on Qwen-1.5B (Δm <= 0.22)
+LAYER = 18
+ALPHA = 3.48        # r = 0.1 of mean ||h|| with the 400-pair balanced v̄; kept FIXED for every n
+# Vectors are always letter-balanced (½ mean of syc=A pairs + ½ mean of syc=B pairs), and pairs are
+# sampled stratified by letter, because each diff has a ~25-norm "(A vs (B" part that must cancel.
