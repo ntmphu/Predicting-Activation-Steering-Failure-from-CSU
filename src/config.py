@@ -14,7 +14,7 @@ DEBUG_MODEL = "Qwen/Qwen2.5-0.5B-Instruct"
 
 # Prompt: optional text appended to every question (decided with src/format_check.py)
 ANSWER_INSTRUCTION = "\n\nAnswer with (A) or (B)."
-INSTRUCTION = ""   # "" = plain CAA question; set to ANSWER_INSTRUCTION if format_check says so
+INSTRUCTION = ANSWER_INSTRUCTION  # chosen Oct 26 from format_check on 1.5B (see PROGRESS.md log)
 
 # Experiment settings
 SEED = 0
