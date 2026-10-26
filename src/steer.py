@@ -12,10 +12,18 @@ from src.data import build_prompt, load_split
 from src.model import answer_ids, answer_mass, load_acts, load_model, load_tokenizer, margin, run
 
 
-def steering_vector(diffs, layer, idx=None):
-    """v̄ = mean of (h_syc - h_other) over the chosen construction pairs (all if idx is None)."""
-    d = diffs[:, layer] if idx is None else diffs[idx, layer]
-    return d.mean(0)
+def steering_vector(diffs, layer, idx=None, syc_is_a=None):
+    """v̄ = mean of (h_syc - h_other) over the chosen construction pairs (all if idx is None).
+
+    If syc_is_a (bool per pair) is given, the vector is letter-balanced: ½·mean(A-items) + ½·mean(B-items).
+    Each diff contains a large "(A vs (B" token-identity part with opposite signs for A- and B-items;
+    equal weighting cancels it exactly, even when the two groups have different sizes."""
+    idx = torch.arange(len(diffs)) if idx is None else torch.as_tensor(idx)
+    d = diffs[idx, layer]
+    if syc_is_a is None:
+        return d.mean(0)
+    a = torch.as_tensor(syc_is_a)[idx]
+    return 0.5 * d[a].mean(0) + 0.5 * d[~a].mean(0)
 
 
 def reply_start(tok, prompt):
