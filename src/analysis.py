@@ -4,8 +4,8 @@ M7: single-signal AUROC per n, then cross-validated logistic regression (5-fold 
     so a prompt is never in both train and test) comparing nested models; Δ AUROC with a 95% bootstrap CI.
 M8: risk–coverage: steer only the c% of prompts with the lowest predicted risk, measure their failure rate.
 
-Run:  python -m src.analysis [--n 25]
-Saves results/auroc_table.csv, results/risk_coverage.csv, results/figures/risk_coverage_n<N>.png
+Run:  python -m src.analysis --model M --behavior B [--tag e2] [--label any|construction] [--n 25]
+Saves <run_dir>/auroc_table<suffix>.csv, risk_coverage<suffix>.csv, figures/risk_coverage<suffix>_n<N>.png
 """
 import argparse
 
@@ -20,7 +20,7 @@ from sklearn.model_selection import GroupKFold
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-from src.config import RESULTS
+from src.config import BEHAVIOR, MODEL, run_dir
 
 BASE = ["proj", "abs_proj", "norm", "conf", "syc_is_a"]
 MODELS = {  # nested comparisons from the proposal (section 3.3, step 2)
@@ -73,18 +73,40 @@ def risk_coverage(y, risk):
     return np.array([y[order[: max(1, int(round(c * len(y))))]].mean() for c in COVERAGES])
 
 
+def construction_subset(df):
+    """E1 label: keep only prompts the reference vector (all pairs, largest n) steers correctly, and only the
+    smaller-n settings. A failure there is caused by the small construction set, which is what CSU targets."""
+    n_ref = df["n"].max()
+    ok_with_ref = df[df["n"] == n_ref].set_index("prompt_id")["failure"] == 0
+    keep = (df["n"] < n_ref) & df["prompt_id"].map(ok_with_ref).fillna(False).astype(bool)
+    print(f"label = construction-induced: {int(ok_with_ref.sum())}/{len(ok_with_ref)} prompts are steered correctly"
+          f" by the n={n_ref} vector; keeping their {int(keep.sum())} rows at smaller n")
+    return df[keep].reset_index(drop=True)
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--n", type=int, default=25, help="construction-set size for the risk–coverage figure")
+    parser.add_argument("--model", default=MODEL)
+    parser.add_argument("--behavior", default=BEHAVIOR)
+    parser.add_argument("--tag", default="", help="read features_<tag>.csv")
+    parser.add_argument("--label", default="any", choices=["any", "construction"],
+                        help="any: failure = Δm < 0;  construction: E1, see construction_subset()")
+    parser.add_argument("--n", type=int, default=None, help="n for the risk–coverage figure (default: smallest)")
     args = parser.parse_args()
-    df = add_features(pd.read_csv(RESULTS / "features.csv"))
+    out = run_dir(args.model, args.behavior)
+    tag = f"_{args.tag}" if args.tag else ""
+    suffix = tag + ("_construction" if args.label == "construction" else "")
+    df = add_features(pd.read_csv(out / f"features{tag}.csv"))
+    if args.label == "construction":
+        df = construction_subset(df)
+    fig_n = args.n or int(df["n"].min())
 
     # ---- M7a: each signal on its own ----
     print("M7a. single-signal AUROC per n  ('-' = signal works in reverse, reported as 1 - AUROC)")
     for n, g in df.groupby("n"):
         parts = []
         for s in SIGNALS:
-            auc = roc_auc_score(g["failure"], g[s]) if g[s].nunique() > 1 else 0.5
+            auc = roc_auc_score(g["failure"], g[s]) if g[s].nunique() > 1 and g["failure"].nunique() > 1 else 0.5
             parts.append(f"{s}={max(auc, 1 - auc):.3f}{'-' if auc < 0.5 else ''}")
         print(f"  n={n:3d} (fail {g['failure'].mean():.2f}): " + "  ".join(parts))
 
@@ -107,7 +129,7 @@ def main():
         rows.append({"set": name, "model": f"Δ AUROC ({top} − {base}) 95% CI",
                      "AUROC": (lo + hi) / 2, "AP": np.nan, "CI_low": lo, "CI_high": hi})
     table = pd.DataFrame(rows)
-    table.to_csv(RESULTS / "auroc_table.csv", index=False)
+    table.to_csv(out / f"auroc_table{suffix}.csv", index=False)
     print("\nM7b. cross-validated AUROC / AP (GroupKFold by prompt)")
     with pd.option_context("display.width", 140, "display.float_format", "{:.3f}".format):
         print(table.drop(columns=["fail_rate"]).to_string(index=False))
@@ -123,21 +145,21 @@ def main():
         for m, c in curves.items():
             rc_rows.append({"n": n, "model": m, "AURC": np.trapezoid(c, COVERAGES) / (COVERAGES[-1] - COVERAGES[0]),
                             **{f"c={cv}": v for cv, v in zip(COVERAGES, c)}})
-        if n == args.n:
+        if n == fig_n:
             fig, ax = plt.subplots(figsize=(6, 4.5))
             for m, c in curves.items():
                 ax.plot(COVERAGES * 100, c * 100, marker="o", ls="--" if m == "random" else "-", label=m)
             ax.set_xlabel("coverage: % of prompts steered (lowest predicted risk first)")
             ax.set_ylabel("failure rate among steered prompts (%)")
-            ax.set_title(f"Selective steering, n = {n} construction pairs")
+            ax.set_title(f"Selective steering, n = {n} ({out.name}, label: {args.label})", fontsize=9)
             ax.legend(); ax.grid(alpha=0.3); fig.tight_layout()
-            (RESULTS / "figures").mkdir(exist_ok=True, parents=True)
-            fig.savefig(RESULTS / "figures" / f"risk_coverage_n{n}.png", dpi=150); plt.close(fig)
+            fig.savefig(out / "figures" / f"risk_coverage{suffix}_n{n}.png", dpi=150); plt.close(fig)
     rc = pd.DataFrame(rc_rows)
-    rc.to_csv(RESULTS / "risk_coverage.csv", index=False)
+    rc.to_csv(out / f"risk_coverage{suffix}.csv", index=False)
     print("\nM8. area under risk–coverage curve (lower = better)")
     print(rc.pivot(index="model", columns="n", values="AURC").round(3).to_string())
-    print(f"\nsaved auroc_table.csv, risk_coverage.csv, figures/risk_coverage_n{args.n}.png")
+    print(f"\nsaved {out}/auroc_table{suffix}.csv, risk_coverage{suffix}.csv, "
+          f"figures/risk_coverage{suffix}_n{fig_n}.png")
 
 
 if __name__ == "__main__":

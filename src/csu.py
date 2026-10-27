@@ -8,8 +8,8 @@ For each setting from milestone 5 (its n chosen pairs):
   - global context: mean cosine between the bootstrap vectors and v̄ (one number per setting)
 H1 check: CSU computed with B in {5, 10, 20, 50} vs B = 100 (Spearman); B = 50 is fine if > 0.9.
 
-Run:  python -m src.csu --model Qwen/Qwen2.5-1.5B-Instruct
-Saves results/features.csv (one row per setting x prompt)
+Run:  python -m src.csu --model Qwen/Qwen2.5-1.5B-Instruct --behavior sycophancy [--tag e2]
+Saves <run_dir>/features[_tag].csv (one row per setting x prompt)
 """
 import argparse
 
@@ -17,10 +17,10 @@ import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
 
-from src.config import DEBUG_MODEL, LAYER, RESULTS
+from src.config import BEHAVIOR, DEBUG_MODEL, run_dir
 from src.data import load_split
-from src.labels import construct_letters
-from src.model import load_acts
+from src.labels import labels_path
+from src.model import construct_letters, load_acts
 
 B = 50
 B_CHECK = [5, 10, 20, 50, 100]
@@ -48,20 +48,22 @@ def csu_of(H, V):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default=DEBUG_MODEL)
+    parser.add_argument("--behavior", default=BEHAVIOR)
+    parser.add_argument("--tag", default="", help="read labels_<tag>.npz, write features_<tag>.csv")
     args = parser.parse_args()
 
-    acts = load_acts(args.model)
-    lab = np.load(RESULTS / "labels.npz")
-    assert str(lab["model"]) == args.model, f"labels.npz is for {lab['model']}, not {args.model}"
-    assert int(lab["layer"]) == LAYER, "labels.npz was made with a different LAYER"
+    acts = load_acts(args.model, args.behavior)
+    lab = np.load(labels_path(args.model, args.behavior, args.tag))
+    assert str(lab["model"]) == args.model, f"labels file is for {lab['model']}, not {args.model}"
+    layer = int(lab["layer"])
 
-    D_all = acts["diffs"][:, LAYER].double().numpy()    # (400, d) construction diffs
+    D_all = acts["diffs"][:, layer].double().numpy()    # (n_construct, d) construction diffs
     is_a_all = construct_letters(acts).numpy()
     k = lab["dm"].shape[1]
-    H = acts["eval_h"][:k, LAYER].double().numpy()      # (600, d) evaluation hidden states
+    H = acts["eval_h"][:k, layer].double().numpy()      # (n_eval, d) evaluation hidden states
     m_base = lab["m_base"]
     norm = np.linalg.norm(H, axis=1)
-    by_id = {it["id"]: it for it in load_split()[1]}
+    by_id = {it["id"]: it for it in load_split(args.behavior)[1]}
     eval_is_a = np.array([by_id[int(i)]["syc_letter"] == "A" for i in lab["eval_ids"]])
 
     rows, stability = [], []
@@ -90,7 +92,7 @@ def main():
               f"  Spearman vs B=100: " + "  ".join(f"B={b}:{r:.2f}" for b, r in rho.items()))
 
     df = pd.concat(rows, ignore_index=True)
-    path = RESULTS / "features.csv"
+    path = run_dir(args.model, args.behavior) / f"features{'_' + args.tag if args.tag else ''}.csv"
     df.to_csv(path, index=False)
 
     # Done-when summaries

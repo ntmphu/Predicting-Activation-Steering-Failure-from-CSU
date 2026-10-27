@@ -1,7 +1,7 @@
 """Milestone 2: load the model and record hidden states + answer scores.
 
-Run:  python -m src.model [--model NAME] [--limit N]
-Saves results/acts_<model>[_limitN].pt  (everything later milestones need, so the GPU is used once)
+Run:  python -m src.model [--model NAME] [--behavior NAME] [--limit N]
+Saves <run_dir>/acts[_limitN].pt  (everything later milestones need, so the GPU is used once)
 """
 import argparse
 
@@ -9,7 +9,7 @@ import torch
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from src.config import DEBUG_MODEL, INSTRUCTION, RESULTS
+from src.config import BEHAVIOR, DEBUG_MODEL, INSTRUCTION, run_dir
 from src.data import answer_token, build_prompt, load_split
 
 
@@ -106,24 +106,31 @@ def summarize(items, m, mass):
           f"{chose_a[~syc_is_a].float().mean():.2f} when syc=B   (both near 1 = A-bias)")
 
 
-def acts_path(model_name, limit=None):
-    """Where milestone 2 saves its results, e.g. results/acts_Qwen2.5-1.5B-Instruct.pt."""
-    return RESULTS / f"acts_{model_name.split('/')[-1]}{f'_limit{limit}' if limit else ''}.pt"
+def acts_path(model_name, behavior=BEHAVIOR, limit=None):
+    """Where milestone 2 saves its results, e.g. results/Qwen2.5-1.5B-Instruct_sycophancy/acts.pt."""
+    return run_dir(model_name, behavior) / f"acts{f'_limit{limit}' if limit else ''}.pt"
 
 
-def load_acts(model_name):
+def load_acts(model_name, behavior=BEHAVIOR):
     """Load milestone 2 results: the full run if it exists, else the biggest --limit debug run."""
-    full = acts_path(model_name)
+    full = acts_path(model_name, behavior)
     if full.exists():
         path = full
     else:
-        debug = sorted(RESULTS.glob(f"{full.stem}_limit*.pt"), key=lambda p: int(p.stem.split("limit")[-1]))
-        assert debug, f"no {full.name}; run `python -m src.model --model {model_name}` first"
+        debug = sorted(full.parent.glob("acts_limit*.pt"), key=lambda p: int(p.stem.split("limit")[-1]))
+        assert debug, f"no {full}; run `python -m src.model --model {model_name} --behavior {behavior}` first"
         path = debug[-1]
     acts = torch.load(path)
     assert acts["instruction"] == INSTRUCTION, f"{path.name} was made with a different INSTRUCTION; re-run src.model"
     print(f"loaded {path.name}")
     return acts
+
+
+def construct_letters(acts):
+    """syc_is_a for each construction pair, in the same order as acts["diffs"]."""
+    construct, _ = load_split(acts.get("behavior", "sycophancy"))  # early 1.5B run predates the field
+    by_id = {it["id"]: it for it in construct}
+    return torch.tensor([by_id[i]["syc_letter"] == "A" for i in acts["construct_ids"]])
 
 
 def check_prefix(model, tok, item):
@@ -139,10 +146,11 @@ def check_prefix(model, tok, item):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default=DEBUG_MODEL)
+    parser.add_argument("--behavior", default=BEHAVIOR)
     parser.add_argument("--limit", type=int, default=None, help="use only the first N items of each split")
     args = parser.parse_args()
 
-    construct, evaluate = load_split()
+    construct, evaluate = load_split(args.behavior)
     if args.limit:
         construct, evaluate = construct[: args.limit], evaluate[: args.limit]
 
@@ -163,10 +171,9 @@ def main():
     print("unsteered behavior on the evaluation prompts:")
     summarize(evaluate, m_base, mass)
 
-    RESULTS.mkdir(exist_ok=True)
-    path = acts_path(args.model, args.limit)
+    path = acts_path(args.model, args.behavior, args.limit)
     torch.save({
-        "model": args.model, "instruction": INSTRUCTION,
+        "model": args.model, "behavior": args.behavior, "instruction": INSTRUCTION,
         "construct_ids": [it["id"] for it in construct], "diffs": diffs,
         "eval_ids": [it["id"] for it in evaluate], "eval_h": eval_h, "m_base": m_base, "mass": mass,
     }, path)

@@ -7,7 +7,7 @@ import argparse
 
 import torch
 
-from src.config import DEBUG_MODEL, STEER_FROM
+from src.config import BEHAVIOR, DEBUG_MODEL, STEER_FROM
 from src.data import build_prompt, load_split
 from src.model import answer_ids, answer_mass, load_acts, load_model, load_tokenizer, margin, run
 
@@ -67,10 +67,11 @@ def main():
     parser.add_argument("--layer", type=int, default=None, help="default: middle layer")
     parser.add_argument("--alpha", type=float, default=1.0)
     parser.add_argument("--steer-from", default=STEER_FROM, choices=["reply", "all"])
+    parser.add_argument("--behavior", default=BEHAVIOR)
     args = parser.parse_args()
 
-    acts = load_acts(args.model)
-    _, evaluate = load_split()
+    acts = load_acts(args.model, args.behavior)
+    _, evaluate = load_split(args.behavior)
     k = min(args.limit, len(acts["m_base"]))
     items, m_base = evaluate[:k], acts["m_base"][:k]
     assert [it["id"] for it in items] == acts["eval_ids"][:k], "split changed since milestone 2"

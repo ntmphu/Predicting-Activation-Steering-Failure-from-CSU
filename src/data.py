@@ -1,17 +1,18 @@
-"""Milestone 1: load the CAA sycophancy questions, split them, and build prompts.
+"""Milestone 1: load a CAA A/B dataset, split it, and build prompts.
 
-Run:  python -m src.data [--model NAME] [--limit N]
+Run:  python -m src.data [--model NAME] [--behavior NAME] [--limit N]
 """
 import argparse
 import json
 import random
 
-from src.config import DATA_PATH, DEBUG_MODEL, INSTRUCTION, N_CONSTRUCT, SEED, SPLIT_PATH
+from src.config import BEHAVIOR, CONSTRUCT_FRAC, DEBUG_MODEL, INSTRUCTION, SEED, data_path, split_path
 
 
-def load_items(path=DATA_PATH):
-    """Read the 1,000 questions and keep just the answer letters ("(A)" -> "A")."""
-    with open(path, encoding="utf-8") as f:
+def load_items(behavior=BEHAVIOR):
+    """Read the questions and keep just the answer letters ("(A)" -> "A").
+    syc_letter = letter of the target-behavior answer (named after the first behavior, sycophancy)."""
+    with open(data_path(behavior), encoding="utf-8") as f:
         raw = json.load(f)
     items = []
     for i, r in enumerate(raw):
@@ -22,22 +23,27 @@ def load_items(path=DATA_PATH):
     return items
 
 
-def split_items(items, seed=SEED, n_construct=N_CONSTRUCT):
-    """Shuffle with a fixed seed: first n_construct -> construction, rest -> evaluation.
-    The ids are saved to split.json so every later script uses the same split."""
+def split_items(items, behavior=BEHAVIOR, seed=SEED, frac=CONSTRUCT_FRAC):
+    """Shuffle with a fixed seed: first 40% -> construction, rest -> evaluation.
+    The ids are saved to data/split_<behavior>.json so every later script uses the same split."""
     ids = [it["id"] for it in items]
     random.Random(seed).shuffle(ids)
+    n_construct = int(frac * len(ids))
     split = {"seed": seed, "construct": sorted(ids[:n_construct]), "evaluate": sorted(ids[n_construct:])}
-    with open(SPLIT_PATH, "w", encoding="utf-8") as f:
+    with open(split_path(behavior), "w", encoding="utf-8") as f:
         json.dump(split, f)
     return _apply_split(items, split)
 
 
-def load_split(path=SPLIT_PATH):
-    """Return (construct, evaluate) item lists from the saved split. Used by milestones 2+."""
-    with open(path, encoding="utf-8") as f:
+def load_split(behavior=BEHAVIOR):
+    """Return (construct, evaluate) item lists from the saved split. Used by milestones 2+.
+    Creates the split the first time a behavior is used."""
+    items = load_items(behavior)
+    if not split_path(behavior).exists():
+        return split_items(items, behavior)
+    with open(split_path(behavior), encoding="utf-8") as f:
         split = json.load(f)
-    return _apply_split(load_items(), split)
+    return _apply_split(items, split)
 
 
 def _apply_split(items, split):
@@ -69,13 +75,14 @@ def a_share(items):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default=DEBUG_MODEL)
+    parser.add_argument("--behavior", default=BEHAVIOR)
     parser.add_argument("--limit", type=int, default=None, help="only check the first N eval prompts")
     args = parser.parse_args()
 
     from src.model import load_tokenizer  # only the tokenizer is needed here, not the weights
 
-    items = load_items()
-    construct, evaluate = split_items(items)
+    items = load_items(args.behavior)
+    construct, evaluate = split_items(items, args.behavior)
 
     # Check 1: counts, no overlap, full coverage
     c_ids, e_ids = {it["id"] for it in construct}, {it["id"] for it in evaluate}
