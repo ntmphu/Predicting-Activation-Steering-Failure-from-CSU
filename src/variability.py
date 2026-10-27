@@ -30,20 +30,29 @@ def main():
     df = pd.read_csv(out / f"features_{args.tag}.csv")
     df = df[df["n"] < df["n"].max()]  # drop the single all-pairs reference setting
     df["abs_proj"] = df["proj"].abs()
+    grad = "g_csu" in df.columns  # E5 columns, present if src.grad was run before src.csu
+    signals = SIGNALS + (["g_csu", "abs_g_z"] if grad else [])
+    if grad:
+        df["abs_g_z"] = -df["g_z"].abs()  # minus: a small |z| (effect close to zero) should mean unstable
 
     rows = []
     for n, g in df.groupby("n"):
-        p = g.groupby("prompt_id").agg(
-            sd_dm=("delta_m", "std"), sd_proj=("proj", "std"), fail_rate=("failure", "mean"),
-            csu=("csu", "mean"), rel_csu=("rel_csu", "mean"), norm=("norm", "first"),
-            abs_proj=("abs_proj", "mean"), conf=("conf", "first"))
+        agg = dict(sd_dm=("delta_m", "std"), sd_proj=("proj", "std"), fail_rate=("failure", "mean"),
+                   csu=("csu", "mean"), rel_csu=("rel_csu", "mean"), norm=("norm", "first"),
+                   abs_proj=("abs_proj", "mean"), conf=("conf", "first"))
+        if grad:
+            agg.update(sd_gproj=("g_proj", "std"), g_csu=("g_csu", "mean"), abs_g_z=("abs_g_z", "mean"))
+        p = g.groupby("prompt_id").agg(**agg)
         unstable = ((p["fail_rate"] > 0) & (p["fail_rate"] < 1)).astype(int)
         row = {"n": n, "draws": g["seed"].nunique(), "prompts": len(p), "unstable_share": unstable.mean(),
                "rho(sd_proj, sd_dm)": spearmanr(p["sd_proj"], p["sd_dm"])[0],
                "rho(csu, sd_proj)": spearmanr(p["csu"], p["sd_proj"])[0]}
-        for s in SIGNALS:
+        if grad:  # E5: does the gradient version of the projection move with the real Δm?
+            row["rho(sd_gproj, sd_dm)"] = spearmanr(p["sd_gproj"], p["sd_dm"])[0]
+            row["rho(g_csu, sd_gproj)"] = spearmanr(p["g_csu"], p["sd_gproj"])[0]
+        for s in signals:
             row[f"rho({s}, sd_dm)"] = spearmanr(p[s], p["sd_dm"])[0]
-        for s in SIGNALS:
+        for s in signals:
             row[f"AUROC unstable: {s}"] = roc_auc_score(unstable, p[s]) if unstable.nunique() > 1 else float("nan")
         rows.append(row)
 

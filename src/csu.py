@@ -7,6 +7,9 @@ For each setting from milestone 5 (its n chosen pairs):
   - baselines: proj = H @ v̄, norm = ||h||, conf = |m_base|, syc_is_a; rel_csu = sqrt(csu) / (|proj| + 1e-6)
   - global context: mean cosine between the bootstrap vectors and v̄ (one number per setting)
 H1 check: CSU computed with B in {5, 10, 20, 50} vs B = 100 (Spearman); B = 50 is fine if > 0.9.
+E5 (if grads.pt from src.grad exists): the same with g(x) = ∂m/∂v instead of h(x), from the SAME bootstrap vectors:
+  g_proj = gᵀv̄ (linear prediction of Δm / alpha), g_csu = Var_b[gᵀv_b], g_z = g_proj / sqrt(g_csu)
+  (g_z = how many standard deviations the predicted effect is above zero; small or negative = likely to fail)
 
 Run:  python -m src.csu --model Qwen/Qwen2.5-1.5B-Instruct --behavior sycophancy [--tag e2]
 Saves <run_dir>/features[_tag].csv (one row per setting x prompt)
@@ -15,6 +18,7 @@ import argparse
 
 import numpy as np
 import pandas as pd
+import torch
 from scipy.stats import spearmanr
 
 from src.config import BEHAVIOR, DEBUG_MODEL, run_dir
@@ -66,7 +70,16 @@ def main():
     by_id = {it["id"]: it for it in load_split(args.behavior)[1]}
     eval_is_a = np.array([by_id[int(i)]["syc_letter"] == "A" for i in lab["eval_ids"]])
 
-    rows, stability = [], []
+    G = None  # E5: gradients of m w.r.t. the added vector, one row per evaluation prompt
+    gpath = run_dir(args.model, args.behavior) / "grads.pt"
+    if gpath.exists():
+        grads = torch.load(gpath)
+        assert grads["layer"] == layer and len(grads["g"]) >= k, "grads.pt does not match these labels"
+        assert list(grads["eval_ids"][:k]) == [int(i) for i in lab["eval_ids"]], "grads.pt: different prompts"
+        G = grads["g"][:k].double().numpy()
+        print(f"loaded grads.pt -> adding g_proj, g_csu, g_z")
+
+    rows, stability, linear = [], [], []
     for s, (n, seed) in enumerate(zip(lab["n"], lab["seed"])):
         idx = lab["idx"][s][lab["idx"][s] >= 0]
         D, is_a = D_all[idx], is_a_all[idx]
@@ -82,12 +95,24 @@ def main():
         rho = {b: spearmanr(csu_of(H, bootstrap_vectors(D, is_a, b, rng)), ref)[0] for b in B_CHECK[:-1]}
         stability.append({"n": int(n), "seed": int(seed), **{f"B={b}": r for b, r in rho.items()}})
 
-        rows.append(pd.DataFrame({
+        frame = pd.DataFrame({
             "n": int(n), "seed": int(seed), "setting": s, "prompt_id": lab["eval_ids"],
             "syc_is_a": eval_is_a.astype(int), "failure": lab["fail"][s].astype(int), "delta_m": lab["dm"][s],
             "mass": lab["mass"][s], "proj": proj, "norm": norm, "conf": np.abs(m_base),
             "csu": csu, "rel_csu": np.sqrt(csu) / (np.abs(proj) + 1e-6), "global_cos": cos.mean(),
-        }))
+        })
+        if G is not None:  # E5: same bootstrap vectors V, but read through the gradient
+            g_proj, g_csu = G @ v_bar, csu_of(G, V)
+            frame["g_proj"], frame["g_csu"] = g_proj, g_csu
+            frame["g_z"] = g_proj / (np.sqrt(g_csu) + 1e-12)
+            # how well does the first-order prediction alpha * gᵀv̄ match the real Δm? (and hᵀv̄, for contrast)
+            dm = lab["dm"][s]
+            linear.append({"n": int(n), "seed": int(seed),
+                           "rho(g_proj, dm)": spearmanr(g_proj, dm)[0],
+                           "rho(proj, dm)": spearmanr(proj, dm)[0],
+                           "sign agree g_proj": np.mean((g_proj > 0) == (dm > 0)),
+                           "sign agree proj": np.mean((proj > 0) == (dm > 0))})
+        rows.append(frame)
         print(f"n={n:3d} seed={seed}  mean CSU={csu.mean():.3g}  global cos(v_b, v̄)={cos.mean():.3f}"
               f"  Spearman vs B=100: " + "  ".join(f"B={b}:{r:.2f}" for b, r in rho.items()))
 
@@ -101,6 +126,9 @@ def main():
     print("  " + "  ".join(f"{c}: {st[c].mean():.3f}" for c in st.columns if c.startswith("B=")))
     print("\nCSU should shrink as n grows (more pairs = steadier vector):")
     print(df.groupby("n")[["csu", "global_cos", "failure"]].mean().to_string())
+    if linear:
+        print("\nE5. Does the first-order prediction alpha * gᵀv̄ match the real Δm? (mean over draws per n)")
+        print(pd.DataFrame(linear).groupby("n").mean().drop(columns="seed").round(3).to_string())
     print(f"\nsaved {path}  ({len(df)} rows, columns: {', '.join(df.columns)})")
 
 

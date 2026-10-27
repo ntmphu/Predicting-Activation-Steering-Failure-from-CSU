@@ -4,7 +4,9 @@ M7: single-signal AUROC per n, then cross-validated logistic regression (5-fold 
     so a prompt is never in both train and test) comparing nested models; Δ AUROC with a 95% bootstrap CI.
 M8: risk–coverage: steer only the c% of prompts with the lowest predicted risk, measure their failure rate.
 
-Run:  python -m src.analysis --model M --behavior B [--tag e2] [--label any|construction] [--n 25]
+E5 (--grad): adds the gradient features from src.grad (gᵀv̄ and gradient CSU) and their nested comparisons.
+
+Run:  python -m src.analysis --model M --behavior B [--tag e2] [--label any|construction] [--n 25] [--grad]
 Saves <run_dir>/auroc_table<suffix>.csv, risk_coverage<suffix>.csv, figures/risk_coverage<suffix>_n<N>.png
 """
 import argparse
@@ -29,8 +31,21 @@ MODELS = {  # nested comparisons from the proposal (section 3.3, step 2)
     "CSU only": ["log_csu"],
     "baselines + CSU": BASE + ["log_csu", "log_rel_csu"],
 }
+COMPARE = [("baselines", "baselines + CSU")]  # (without, with) pairs that get a Δ AUROC CI
+# E5 (--grad): gᵀv̄ = linear prediction of Δm; gradient CSU = its spread over the bootstrap vectors
+GRAD_MODELS = {
+    "baselines": BASE,
+    "baselines + CSU": BASE + ["log_csu", "log_rel_csu"],
+    "gᵀv̄ only": ["g_proj"],
+    "baselines + gᵀv̄": BASE + ["g_proj"],
+    "gCSU only": ["log_g_csu"],
+    "baselines + gᵀv̄ + gCSU": BASE + ["g_proj", "log_g_csu", "g_z"],
+}
+GRAD_COMPARE = [("baselines", "baselines + CSU"), ("baselines", "baselines + gᵀv̄"),
+                ("baselines + gᵀv̄", "baselines + gᵀv̄ + gCSU")]
 POOLED_EXTRA = ["log_n", "global_cos"]  # construction-set size + global reliability (only vary across settings)
 SIGNALS = ["proj", "abs_proj", "norm", "conf", "syc_is_a", "csu", "rel_csu"]
+GRAD_SIGNALS = ["g_proj", "g_csu", "g_z"]
 COVERAGES = np.round(np.arange(0.1, 1.01, 0.1), 1)
 
 
@@ -40,6 +55,8 @@ def add_features(df):
     df["log_csu"] = np.log(df["csu"] + 1e-12)        # CSU is very skewed
     df["log_rel_csu"] = np.log(df["rel_csu"] + 1e-12)
     df["log_n"] = np.log(df["n"])
+    if "g_csu" in df.columns:
+        df["log_g_csu"] = np.log(df["g_csu"] + 1e-12)
     return df
 
 
@@ -92,11 +109,16 @@ def main():
     parser.add_argument("--label", default="any", choices=["any", "construction"],
                         help="any: failure = Δm < 0;  construction: E1, see construction_subset()")
     parser.add_argument("--n", type=int, default=None, help="n for the risk–coverage figure (default: smallest)")
+    parser.add_argument("--grad", action="store_true", help="E5: compare with the gradient features (src.grad)")
     args = parser.parse_args()
     out = run_dir(args.model, args.behavior)
     tag = f"_{args.tag}" if args.tag else ""
-    suffix = tag + ("_construction" if args.label == "construction" else "")
+    suffix = tag + ("_construction" if args.label == "construction" else "") + ("_grad" if args.grad else "")
     df = add_features(pd.read_csv(out / f"features{tag}.csv"))
+    models, compare, signals = MODELS, COMPARE, SIGNALS
+    if args.grad:
+        assert "g_csu" in df.columns, "no gradient features: run src.grad, then src.csu again"
+        models, compare, signals = GRAD_MODELS, GRAD_COMPARE, SIGNALS + GRAD_SIGNALS
     if args.label == "construction":
         df = construction_subset(df)
     fig_n = args.n or int(df["n"].min())
@@ -105,29 +127,33 @@ def main():
     print("M7a. single-signal AUROC per n  ('-' = signal works in reverse, reported as 1 - AUROC)")
     for n, g in df.groupby("n"):
         parts = []
-        for s in SIGNALS:
+        for s in signals:
             auc = roc_auc_score(g["failure"], g[s]) if g[s].nunique() > 1 and g["failure"].nunique() > 1 else 0.5
             parts.append(f"{s}={max(auc, 1 - auc):.3f}{'-' if auc < 0.5 else ''}")
         print(f"  n={n:3d} (fail {g['failure'].mean():.2f}): " + "  ".join(parts))
 
     # ---- M7b: nested models, cross-validated ----
     rows, risks = [], {}
-    groups = [(f"n={n}", g.reset_index(drop=True), MODELS) for n, g in df.groupby("n")]
-    pooled = {**MODELS, "global reliability": POOLED_EXTRA,
-              "baselines + global": BASE + POOLED_EXTRA,
-              "baselines + global + CSU": BASE + POOLED_EXTRA + ["log_csu", "log_rel_csu"]}
-    groups.append(("all n pooled", df.reset_index(drop=True), pooled))
-    for name, g, models in groups:
-        for model_name, cols in models.items():
+    groups = [(f"n={n}", g.reset_index(drop=True), models, compare) for n, g in df.groupby("n")]
+    if args.grad:  # pooled: every model gets log n + global reliability added
+        pooled = {k: v + POOLED_EXTRA for k, v in models.items()}
+        groups.append(("all n pooled (+ log n, global)", df.reset_index(drop=True), pooled, compare))
+    else:
+        pooled = {**models, "global reliability": POOLED_EXTRA,
+                  "baselines + global": BASE + POOLED_EXTRA,
+                  "baselines + global + CSU": BASE + POOLED_EXTRA + ["log_csu", "log_rel_csu"]}
+        groups.append(("all n pooled", df.reset_index(drop=True), pooled,
+                       [("baselines + global", "baselines + global + CSU")]))
+    for name, g, set_models, set_compare in groups:
+        for model_name, cols in set_models.items():
             r = oof_risk(g, cols)
             risks[(name, model_name)] = r
             rows.append({"set": name, "model": model_name, "AUROC": roc_auc_score(g["failure"], r),
                          "AP": average_precision_score(g["failure"], r), "fail_rate": g["failure"].mean()})
-        top, base = ("baselines + global + CSU", "baselines + global") if name == "all n pooled" \
-            else ("baselines + CSU", "baselines")
-        lo, hi = delta_auc_ci(g, risks[(name, base)], risks[(name, top)])
-        rows.append({"set": name, "model": f"Δ AUROC ({top} − {base}) 95% CI",
-                     "AUROC": (lo + hi) / 2, "AP": np.nan, "CI_low": lo, "CI_high": hi})
+        for base, top in set_compare:
+            lo, hi = delta_auc_ci(g, risks[(name, base)], risks[(name, top)])
+            rows.append({"set": name, "model": f"Δ AUROC ({top} − {base}) 95% CI",
+                         "AUROC": (lo + hi) / 2, "AP": np.nan, "CI_low": lo, "CI_high": hi})
     table = pd.DataFrame(rows)
     table.to_csv(out / f"auroc_table{suffix}.csv", index=False)
     print("\nM7b. cross-validated AUROC / AP (GroupKFold by prompt)")
@@ -140,7 +166,7 @@ def main():
         g = g.reset_index(drop=True)
         y = g["failure"].to_numpy()
         curves = {"random": np.full(len(COVERAGES), y.mean())}
-        for m in ["projection", "baselines", "CSU only", "baselines + CSU"]:
+        for m in models:
             curves[m] = risk_coverage(y, risks[(f"n={n}", m)])
         for m, c in curves.items():
             rc_rows.append({"n": n, "model": m, "AURC": np.trapezoid(c, COVERAGES) / (COVERAGES[-1] - COVERAGES[0]),
