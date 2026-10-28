@@ -1,6 +1,6 @@
 # Predicting Activation-Steering Failure from Construction-Sample Uncertainty
 
-Code for the GStar individual project *"Can We Predict When Activation Steering Backfires?"*.
+*"Can We Predict When Activation Steering Backfires?"*.
 
 A steering vector is the mean difference of hidden states over n contrastive example pairs (CAA). Adding it to a
 model's activations shifts behaviour on average, but pushes some inputs the wrong way. This project tests whether
