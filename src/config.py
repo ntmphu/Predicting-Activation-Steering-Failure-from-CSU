@@ -19,7 +19,7 @@ BEHAVIORS = ["sycophancy", "myopic-reward"]
 
 # Prompt: optional text appended to every question (decided with src/format_check.py)
 ANSWER_INSTRUCTION = "\n\nAnswer with (A) or (B)."
-INSTRUCTION = ANSWER_INSTRUCTION  # chosen Oct 26 from format_check on 1.5B (see PROGRESS.md log)
+INSTRUCTION = ANSWER_INSTRUCTION  # chosen Oct 26 from format_check on 1.5B
 
 # Experiment settings
 SEED = 0

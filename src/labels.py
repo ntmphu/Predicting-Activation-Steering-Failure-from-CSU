@@ -89,7 +89,7 @@ def main():
     for n in sorted(set(ns_arr)):
         print(f"  n={n:3d}: {(dm[ns_arr == n] < 0).mean():.3f}")
     if (dm < 0).mean() < 0.03:
-        print("WARNING: failures < 3% -> use the fallback label 'Δm in the bottom 20%' (coding plan M5)")
+        print("WARNING: failures < 3% -> use the fallback label 'Δm in the bottom 20%'")
 
 
 if __name__ == "__main__":
